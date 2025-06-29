@@ -22,9 +22,9 @@ git clone https://github.com/yourusername/langchain-rag-fastapi.git
 cd langchain-rag-fastapi
 pip install -r requirements.txt
 
-Start the API server (update the path if your `main.py` is inside an `app/` folder):
+Start the API server
 
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload
 
 ## 🛠 Example Usage
 
