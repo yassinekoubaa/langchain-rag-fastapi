@@ -1,20 +1,20 @@
 """
-Advanced Retrieval-Augmented Generation (RAG) FastAPI project.
+Intermediate Retrieval-Augmented Generation (RAG) FastAPI project.
 
 ✅ Comprehensive retrieval - Finds relevant information from multiple document sections
 ✅ Accurate responses - No hallucination, only document-based information
-✅ Good coverage - Identifies all mentioned projects
+✅ Smart query classification - Distinguishes between current/past projects and specific queries
+✅ Targeted document filtering - Filters documents based on question context
 ✅ Professional formatting - Clean, structured responses
 ✅ Error handling - Proper HTTP status codes and error messages
 ✅ Debug capabilities - Endpoints to troubleshoot retrieval issues
 ✅ Web UI - Simple chat interface for user interaction
 
-The system successfully demonstrates a working RAG pipeline that:
-- Loads and indexes internal documents
-- Retrieves relevant context based on queries
-- Generates grounded, factual responses
-- Maintains professional, business-appropriate tone
-- Provides both API and web interfaces
+The system demonstrates intermediate RAG techniques:
+- Query classification for context-aware processing
+- Document filtering based on content type and status
+- Adaptive prompt engineering for different question types
+- Production-ready FastAPI architecture with comprehensive error handling
 """
 
 from fastapi import FastAPI, HTTPException, Request, status
@@ -27,7 +27,8 @@ from dotenv import load_dotenv
 import os
 import asyncio
 import time
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
+import re
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
@@ -47,9 +48,9 @@ client = InferenceClient(model=MODEL_ID, token=HUGGINGFACE_TOKEN)
 
 # FastAPI app configuration
 app = FastAPI(
-    title="RAG Document QA API",
-    description="Production-ready RAG system for answering questions about internal documents",
-    version="1.0.0",
+    title="Intermediate RAG Document QA API",
+    description="Production-ready intermediate RAG system with smart query classification and document filtering",
+    version="1.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_tags=[
@@ -73,7 +74,7 @@ app.add_middleware(
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
-# Pydantic models
+# Enhanced Pydantic models
 class AskRequest(BaseModel):
     """Request model for asking questions."""
     prompt: str = Field(
@@ -99,12 +100,14 @@ class AskResponse(BaseModel):
     """Response model for question answers."""
     answer: str = Field(..., description="AI-generated answer based on document content")
     processing_time: Optional[float] = Field(None, description="Time taken to process the request in seconds")
+    query_type: Optional[str] = Field(None, description="Classified query type for debugging")
     
     class Config:
         schema_extra = {
             "example": {
                 "answer": "• ERP Rollout for Orion Industrial Solutions – Implementing a unified ERP system...",
-                "processing_time": 2.34
+                "processing_time": 2.34,
+                "query_type": "current_projects"
             }
         }
 
@@ -117,7 +120,9 @@ class ErrorResponse(BaseModel):
 class DebugRetrievalResponse(BaseModel):
     """Response model for debug retrieval endpoint.""" 
     query: str
+    query_classification: dict
     retrieved_documents: List[dict]
+    filtered_documents: List[dict]
     count: int
     total_chunks: int
 
@@ -147,7 +152,7 @@ def initialize_document_system():
         vectorstore = FAISS.from_documents(chunks, embeddings)
         retriever = vectorstore.as_retriever(
             search_type="mmr",
-            search_kwargs={"k": 6, "fetch_k": 10}
+            search_kwargs={"k": 8, "fetch_k": 12}  # Increased for better filtering
         )
 
         print(f"✅ Successfully loaded {len(chunks)} document chunks for retrieval.")
@@ -158,6 +163,176 @@ def initialize_document_system():
 
 # Initialize the system
 chunks, retriever = initialize_document_system()
+
+# Enhanced Query Classification System
+class QueryClassifier:
+    """Production-ready query classification for RAG optimization."""
+    
+    def __init__(self):
+        self.classification_patterns = {
+            "current_projects": {
+                "keywords": ["current", "working", "active", "ongoing", "now", "currently", "projects"],
+                "context_filters": ["project brief", "project name", "client:"],
+                "exclude_sections": ["lessons learned", "key takeaway"],
+                "prompt_type": "current_projects"
+            },
+            "project_lessons": {
+                "keywords": ["takeaway", "lesson", "learned", "key findings", "insights"],
+                "context_filters": ["lessons learned", "key takeaway"],
+                "exclude_sections": ["project brief"],
+                "prompt_type": "lessons_learned"
+            },
+            "specific_project": {
+                "keywords": [
+                    "hr transformation", "cloud security", "erp rollout", "erp", 
+                    "customer experience", "supply chain", "orion", "meridian", "crestview"
+                ],
+                "context_filters": [],
+                "exclude_sections": [],
+                "prompt_type": "specific_project"
+            },
+            "policies": {
+                "keywords": ["policy", "procedure", "remote", "work from home", "guideline", "rule"],
+                "context_filters": ["policy", "title:", "purpose:"],
+                "exclude_sections": ["project", "lessons learned"],
+                "prompt_type": "policy"
+            },
+            "escalation": {
+                "keywords": ["escalate", "urgent", "emergency", "critical", "issue"],
+                "context_filters": ["escalation", "after business hours"],
+                "exclude_sections": [],
+                "prompt_type": "escalation"
+            }
+        }
+    
+    def classify_query(self, query: str) -> Dict[str, Any]:
+        """Classify query with confidence scoring and filtering rules."""
+        query_lower = query.lower()
+        
+        # Check for specific project mentions first
+        project_matches = []
+        for pattern_name, config in self.classification_patterns.items():
+            if pattern_name == "specific_project":
+                for keyword in config["keywords"]:
+                    if keyword in query_lower:
+                        project_matches.append(keyword)
+        
+        # Score each classification type
+        classifications = {}
+        for pattern_name, config in self.classification_patterns.items():
+            score = 0
+            matched_keywords = []
+            
+            for keyword in config["keywords"]:
+                if keyword in query_lower:
+                    score += 1
+                    matched_keywords.append(keyword)
+            
+            if score > 0:
+                classifications[pattern_name] = {
+                    "score": score,
+                    "confidence": min(score / len(config["keywords"]), 1.0),
+                    "matched_keywords": matched_keywords,
+                    "config": config
+                }
+        
+        # Determine primary classification
+        if not classifications:
+            return {
+                "type": "general",
+                "confidence": 1.0,
+                "specific_projects": project_matches,
+                "config": {"prompt_type": "general", "context_filters": [], "exclude_sections": []}
+            }
+        
+        # Get highest scoring classification
+        primary_type = max(classifications.keys(), key=lambda x: classifications[x]["score"])
+        primary_classification = classifications[primary_type]
+        
+        return {
+            "type": primary_type,
+            "confidence": primary_classification["confidence"],
+            "matched_keywords": primary_classification["matched_keywords"],
+            "specific_projects": project_matches,
+            "config": primary_classification["config"],
+            "all_classifications": classifications
+        }
+
+def filter_documents_by_classification(docs: List, classification: Dict[str, Any]) -> List:
+    """Enhanced document filtering with improved project detection."""
+    if classification["type"] == "general":
+        return docs[:6]  # Return top documents for general queries
+    
+    config = classification["config"]
+    filtered_docs = []
+    
+    # Special handling for current projects to ensure comprehensive coverage
+    if classification["type"] == "current_projects":
+        project_brief_docs = []
+        other_relevant_docs = []
+        
+        for doc in docs:
+            content_lower = doc.page_content.lower()
+            
+            # Skip lessons learned sections for current projects
+            if any(exclude_term in content_lower for exclude_term in ["lessons learned", "key takeaway"]):
+                continue
+            
+            # Prioritize project brief sections
+            if any(filter_term in content_lower for filter_term in ["project name:", "project brief", "client:"]):
+                project_brief_docs.append(doc)
+            # Include other potentially relevant project documents
+            elif any(project_indicator in content_lower for project_indicator in [
+                "rollout", "transformation", "framework", "assessment", "optimization"
+            ]):
+                other_relevant_docs.append(doc)
+        
+        # Combine project briefs first, then other relevant docs
+        filtered_docs = project_brief_docs + other_relevant_docs
+        
+        # Ensure we have enough documents for comprehensive coverage
+        if len(filtered_docs) < 6:
+            remaining_docs = [doc for doc in docs if doc not in filtered_docs][:6-len(filtered_docs)]
+            filtered_docs.extend(remaining_docs)
+    
+    else:
+        # Original filtering logic for other query types
+        for doc in docs:
+            content_lower = doc.page_content.lower()
+            
+            # Check if document should be excluded
+            should_exclude = False
+            for exclude_term in config.get("exclude_sections", []):
+                if exclude_term in content_lower:
+                    should_exclude = True
+                    break
+            
+            if should_exclude:
+                continue
+            
+            # Check if document matches context filters
+            if config.get("context_filters"):
+                matches_filter = False
+                for filter_term in config["context_filters"]:
+                    if filter_term in content_lower:
+                        matches_filter = True
+                        break
+                
+                if matches_filter:
+                    filtered_docs.append(doc)
+            else:
+                # No specific filters, include if not excluded
+                filtered_docs.append(doc)
+            
+            # Limit results for performance
+            if len(filtered_docs) >= 6:
+                break
+    
+    # Enhanced fallback with better document selection
+    if not filtered_docs:
+        return docs[:4]
+    
+    return filtered_docs[:8]  # Allow more documents for better coverage
 
 # Utility functions
 def handle_greeting(prompt: str) -> Optional[str]:
@@ -187,12 +362,13 @@ def is_valid_question(prompt: str) -> bool:
     ]
     return any(keyword in prompt.lower() for keyword in question_keywords)
 
-async def generate_llm_response(prompt: str, context: str) -> str:
-    """Generate response from LLM with retry logic and error handling."""
+async def generate_contextual_response(prompt: str, context: str, classification: Dict[str, Any]) -> str:
+    """Generate contextually appropriate responses based on query classification."""
     
-    # Enhanced prompt specifically for project questions
-    if any(word in prompt.lower() for word in ['project', 'working', 'current']):
-        llm_prompt = f"""You are a professional business analyst. Based on the documents below, list ALL current projects with their details.
+    query_type = classification["config"]["prompt_type"]
+    
+    if query_type == "current_projects":
+        llm_prompt = f"""You are a business analyst. List ALL current active projects from the documents.
 
 DOCUMENTS:
 {context}
@@ -200,15 +376,20 @@ DOCUMENTS:
 QUESTION: {prompt}
 
 INSTRUCTIONS:
-- List ALL projects mentioned in the Project Briefs section
-- Format: • Project Name - Client - Description
-- Be complete and include all active projects
-- Use only information from the documents
-- Keep descriptions concise but comprehensive
+- List ALL active projects mentioned in Project Briefs or project descriptions
+- Format: • Project Name for Client - Brief description
+- Include projects like ERP Rollout, Customer Experience Transformation, ESG Framework
+- Focus on active/current projects, not completed ones from lessons learned
+- Be comprehensive and include all projects found
 
 ANSWER:"""
-    else:
-        llm_prompt = f"""You are a professional business analyst. Answer the question using ONLY the information provided in the documents below.
+
+    elif query_type == "lessons_learned":
+        # Extract specific project if mentioned
+        specific_projects = classification.get("specific_projects", [])
+        project_focus = f" specifically about {', '.join(specific_projects)}" if specific_projects else ""
+        
+        llm_prompt = f"""You are a business analyst. Extract key takeaways{project_focus} from the Lessons Learned section.
 
 DOCUMENTS:
 {context}
@@ -216,14 +397,80 @@ DOCUMENTS:
 QUESTION: {prompt}
 
 INSTRUCTIONS:
-- Provide accurate, fact-based answers from the documents only
-- Use bullet points for lists when appropriate
+- Focus on lessons learned and key takeaways
+- Provide actionable insights and best practices
+- Format as bullet points
+- Be specific and practical
+
+ANSWER:"""
+
+    elif query_type == "specific_project":
+        specific_projects = classification.get("specific_projects", [])
+        project_name = specific_projects[0] if specific_projects else "the mentioned project"
+        
+        llm_prompt = f"""You are a business analyst. Provide information about {project_name}.
+
+DOCUMENTS:
+{context}
+
+QUESTION: {prompt}
+
+INSTRUCTIONS:
+- Focus on the specific project mentioned in the question
+- Provide relevant details from both project briefs and lessons learned if available
 - Be comprehensive but concise
-- Do not add information not mentioned in the documents
-- Maintain a professional tone
+- Format clearly with bullet points if appropriate
+
+ANSWER:"""
+
+    elif query_type == "policy":
+        llm_prompt = f"""You are a business analyst. Provide clear policy information.
+
+DOCUMENTS:
+{context}
+
+QUESTION: {prompt}
+
+INSTRUCTIONS:
+- Extract specific policy details
+- Format as bullet points for clarity
+- Be precise and actionable
+- Focus on the specific policy requirements
+
+ANSWER:"""
+
+    elif query_type == "escalation":
+        llm_prompt = f"""You are a business analyst. Provide clear escalation procedures.
+
+DOCUMENTS:
+{context}
+
+QUESTION: {prompt}
+
+INSTRUCTIONS:
+- Provide step-by-step escalation process
+- Format as numbered or bulleted list
+- Be specific about roles and timelines
+- Focus on urgent issue handling
+
+ANSWER:"""
+
+    else:  # general
+        llm_prompt = f"""You are a business analyst. Answer using the document information.
+
+DOCUMENTS:
+{context}
+
+QUESTION: {prompt}
+
+INSTRUCTIONS:
+- Provide accurate information from documents
+- Be concise and professional
+- Use bullet points when appropriate
 
 ANSWER:"""
     
+    # Generate response with optimized parameters
     max_retries = 3
     timeout_seconds = 30
     
@@ -233,11 +480,11 @@ ANSWER:"""
                 asyncio.to_thread(
                     client.text_generation,
                     prompt=llm_prompt,
-                    max_new_tokens=250,  # Increased for complete responses
-                    temperature=0.1,     # Lower temperature for more focused answers
+                    max_new_tokens=250,  # Increased for comprehensive project listing
+                    temperature=0.05,    # Very low for factual accuracy
                     do_sample=True,
-                    top_p=0.9,
-                    repetition_penalty=1.1
+                    top_p=0.85,
+                    repetition_penalty=1.15
                 ),
                 timeout=timeout_seconds
             )
@@ -249,8 +496,8 @@ ANSWER:"""
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail={
                         "error": "Request timeout",
-                        "detail": f"The AI model took longer than {timeout_seconds} seconds to respond",
-                        "suggestions": ["Try asking a simpler question", "Try again in a few moments"]
+                        "detail": f"Response took longer than {timeout_seconds} seconds",
+                        "suggestions": ["Try a simpler question", "Try again in a moment"]
                     }
                 )
             await asyncio.sleep(1)
@@ -261,29 +508,40 @@ ANSWER:"""
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail={
                         "error": "Model connection failed",
-                        "detail": f"Failed to connect to AI model after {max_retries} attempts: {str(e)}",
-                        "suggestions": ["Check your internet connection", "Try again later"]
+                        "detail": f"Failed after {max_retries} attempts: {str(e)}",
+                        "suggestions": ["Check connection", "Try again later"]
                     }
                 )
             await asyncio.sleep(2)
 
 def clean_response(response: str) -> str:
-    """Clean and format the LLM response."""
-    # Remove conversational phrases
-    conversational_phrases = [
-        "I hope this helps", "If you need further clarification",
-        "Feel free to ask", "Let me know if", "I'm here to assist"
+    """Enhanced response cleaning."""
+    # Remove verbose explanatory phrases
+    unwanted_phrases = [
+        "Note that", "However, if you interpret", "Therefore, it has been included",
+        "The question asks for", "which implies that", "In such a case, the correct",
+        "Please let me know", "Best regards", "Business Analyst", "END OF ANSWER",
+        "The above response format", "Note: The question asked about",
+        "Also, note that", "which could indicate either", "The final answer is:"
     ]
     
-    for phrase in conversational_phrases:
+    for phrase in unwanted_phrases:
         if phrase in response:
             response = response.split(phrase)[0].strip()
     
-    # Ensure proper ending
-    if response and not response.endswith(('.', ':', '!', '?')):
-        response = response.rstrip() + '.'
+    # Clean up incomplete sentences
+    if response.endswith('.'):
+        return response
+    elif '.' in response:
+        # Keep only complete sentences
+        sentences = response.split('.')
+        complete_sentences = [s.strip() for s in sentences[:-1] if s.strip()]
+        return '. '.join(complete_sentences) + '.'
     
-    return response
+    return response.rstrip() + '.'
+
+# Initialize query classifier
+query_classifier = QueryClassifier()
 
 # API Endpoints
 
@@ -291,8 +549,14 @@ def clean_response(response: str) -> str:
 async def root():
     """Root endpoint providing API information and available interfaces."""
     return {
-        "message": "RAG Document Assistant API",
-        "version": "1.0.0",
+        "message": "Intermediate RAG Document Assistant API",
+        "version": "1.1.0",
+        "features": [
+            "Smart query classification",
+            "Context-aware document filtering", 
+            "Adaptive prompt engineering",
+            "Production-ready FastAPI architecture"
+        ],
         "interfaces": {
             "web_ui": "/ui",
             "api_docs": "/docs",
@@ -328,9 +592,13 @@ async def get_ui(request: Request):
 )
 async def ask_question(request: AskRequest):
     """
-    Main endpoint to ask questions about internal documents.
+    Enhanced endpoint with intelligent query classification and document filtering.
     
-    Handles both greetings and document-specific questions with intelligent routing.
+    Features:
+    - Smart query classification for context-aware processing
+    - Document filtering based on question type
+    - Adaptive prompt engineering for different scenarios
+    - Distinguishes between current/past projects automatically
     """
     start_time = time.time()
     
@@ -340,35 +608,48 @@ async def ask_question(request: AskRequest):
         if greeting_response:
             return AskResponse(
                 answer=greeting_response,
-                processing_time=round(time.time() - start_time, 3)
+                processing_time=round(time.time() - start_time, 3),
+                query_type="greeting"
             )
         
-        # Validate question format for non-greetings
+        # Validate question format
         if not is_valid_question(request.prompt):
             return AskResponse(
-                answer="I understand you have a question, but I need more specific information. Try asking about projects, policies, or procedures using words like 'what', 'how', or 'when'.",
-                processing_time=round(time.time() - start_time, 3)
+                answer="I need a more specific question. Try asking about projects, policies, or procedures using words like 'what', 'how', or 'when'.",
+                processing_time=round(time.time() - start_time, 3),
+                query_type="invalid"
             )
 
+        # Classify query for targeted processing
+        classification = query_classifier.classify_query(request.prompt)
+        
         # Retrieve relevant documents
         relevant_docs = retriever.get_relevant_documents(request.prompt)
         
         if not relevant_docs:
             return AskResponse(
-                answer="I couldn't find relevant information in the documents to answer your question. Please try asking about projects, policies, or procedures.",
-                processing_time=round(time.time() - start_time, 3)
+                answer="I couldn't find relevant information to answer your question. Please try asking about projects, policies, or procedures.",
+                processing_time=round(time.time() - start_time, 3),
+                query_type=classification["type"]
             )
         
-        # Combine retrieved context
-        context = "\n---\n".join([doc.page_content for doc in relevant_docs])
+        # Filter documents based on classification
+        filtered_docs = filter_documents_by_classification(relevant_docs, classification)
         
-        # Generate response
-        response = await generate_llm_response(request.prompt, context)
+        # Further filter for specific projects if mentioned
+        if classification.get("specific_projects"):
+            filtered_docs = extract_specific_project_content(filtered_docs, classification["specific_projects"])
         
-        # Clean and format response
+        # Combine filtered context
+        context = "\n---\n".join([doc.page_content for doc in filtered_docs])
+        
+        # Generate contextual response
+        response = await generate_contextual_response(request.prompt, context, classification)
+        
+        # Clean response
         answer = clean_response(response)
         
-        # Fallback if response is empty after cleaning
+        # Fallback if response is empty
         if not answer:
             answer = "I found relevant documents but couldn't generate a clear answer. Please try rephrasing your question."
         
@@ -376,57 +657,75 @@ async def ask_question(request: AskRequest):
         
         return AskResponse(
             answer=answer,
-            processing_time=processing_time
+            processing_time=processing_time,
+            query_type=classification["type"]
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        # Return user-friendly error message instead of raising exception
         return AskResponse(
-            answer=f"I encountered an issue processing your request. Please try again or contact support if the problem persists.",
-            processing_time=round(time.time() - start_time, 3)
+            answer="I encountered an issue processing your request. Please try again or contact support if the problem persists.",
+            processing_time=round(time.time() - start_time, 3),
+            query_type="error"
         )
 
 @app.post(
     "/debug/retrieve",
     tags=["debug"],
     response_model=DebugRetrievalResponse,
-    summary="Debug document retrieval"
+    summary="Debug enhanced document retrieval"
 )
 async def debug_retrieve(request: AskRequest):
     """
-    Debug endpoint to inspect which documents are retrieved for a given query.
-    Useful for troubleshooting retrieval quality and relevance.
+    Enhanced debug endpoint showing query classification and document filtering.
     """
     try:
+        # Classify query
+        classification = query_classifier.classify_query(request.prompt)
+        
+        # Get initial retrieval
         relevant_docs = retriever.get_relevant_documents(request.prompt)
+        
+        # Apply filtering
+        filtered_docs = filter_documents_by_classification(relevant_docs, classification)
+        
+        if classification.get("specific_projects"):
+            filtered_docs = extract_specific_project_content(filtered_docs, classification["specific_projects"])
         
         return DebugRetrievalResponse(
             query=request.prompt,
+            query_classification=classification,
             retrieved_documents=[
                 {
-                    "content": doc.page_content[:500] + "..." if len(doc.page_content) > 500 else doc.page_content,
+                    "content": doc.page_content[:300] + "..." if len(doc.page_content) > 300 else doc.page_content,
                     "metadata": doc.metadata,
                     "length": len(doc.page_content)
                 }
                 for doc in relevant_docs
             ],
-            count=len(relevant_docs),
+            filtered_documents=[
+                {
+                    "content": doc.page_content[:300] + "..." if len(doc.page_content) > 300 else doc.page_content,
+                    "metadata": doc.metadata,
+                    "length": len(doc.page_content)
+                }
+                for doc in filtered_docs
+            ],
+            count=len(filtered_docs),
             total_chunks=len(chunks)
         )
         
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error during retrieval debug: {str(e)}"
+            detail=f"Error during enhanced retrieval debug: {str(e)}"
         )
 
 @app.get("/debug/chunks", tags=["debug"], summary="Debug document chunks")
 async def debug_chunks():
     """
     Debug endpoint to inspect how documents are chunked and indexed.
-    Shows document processing configuration and sample chunks.
     """
     try:
         return {
@@ -455,7 +754,7 @@ async def debug_chunks():
 @app.get("/health", tags=["system"], summary="System health check")
 async def health_check():
     """
-    Comprehensive health check endpoint providing system status and configuration.
+    Comprehensive health check endpoint.
     """
     try:
         return {
@@ -465,10 +764,17 @@ async def health_check():
                 "documents_loaded": len(chunks),
                 "model": MODEL_ID,
                 "retriever_type": "FAISS with MMR",
-                "embedding_model": "sentence-transformers/all-MiniLM-L6-v2"
+                "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+                "rag_level": "intermediate"
+            },
+            "features": {
+                "query_classification": "enabled",
+                "document_filtering": "enabled",
+                "contextual_prompting": "enabled",
+                "smart_retrieval": "enabled"
             },
             "api_info": {
-                "version": "1.0.0",
+                "version": "1.1.0",
                 "interfaces": ["REST API", "Web UI"],
                 "endpoints": {
                     "primary": "/ask",
@@ -487,7 +793,7 @@ async def health_check():
 # Exception handlers
 @app.exception_handler(422)
 async def validation_exception_handler(request: Request, exc):
-    """Custom handler for validation errors."""
+    """Custom handler for validation errors following FastAPI best practices."""
     return HTTPException(
         status_code=422,
         detail={
