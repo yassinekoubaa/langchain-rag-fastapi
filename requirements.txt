@@ -10,3 +10,5 @@ accelerate==0.21.0
 huggingface_hub==0.20.3
 packaging<25,>=23.2
 langchain_huggingface
+jinja2 
+python-multipart
