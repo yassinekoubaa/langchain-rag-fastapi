@@ -1,5 +1,4 @@
 # langchain-rag-fastapi
-
 👋 **Hey there!**
 
 Welcome to my playground for experimenting with **Retrieval-Augmented Generation (RAG)** using [LangChain](https://python.langchain.com/) and [FastAPI](https://fastapi.tiangolo.com/). This is a lightweight backend API that answers questions based on your own documents—perfect for tinkering with GenAI and building practical tools.
