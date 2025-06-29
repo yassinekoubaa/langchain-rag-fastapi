@@ -1,57 +1,74 @@
 # langchain-rag-fastapi
-👋 **Hey there!**
 
-Welcome to my playground for experimenting with **Retrieval-Augmented Generation (RAG)** using [LangChain](https://python.langchain.com/) and [FastAPI](https://fastapi.tiangolo.com/). This is a lightweight backend API that answers questions based on your own documents—perfect for tinkering with GenAI and building practical tools.
+A production-ready FastAPI backend for Retrieval-Augmented Generation (RAG) using [LangChain](https://python.langchain.com/), [FAISS](https://github.com/facebookresearch/faiss), and [Hugging Face Inference API](https://huggingface.co/docs/huggingface_hub/guides/inference). This API answers questions based on your internal documents, enabling robust, grounded LLM-powered solutions for real-world use cases.
 
-I’m building this as part of my hands-on AI journey, and I hope it inspires you to try out some of these modern AI techniques!
+---
 
-## ✨ What’s Inside
+## Features
 
-- **LangChain** for managing the RAG pipeline  
-- **FAISS** for super-fast semantic search  
-- **FastAPI** for a speedy, modern backend  
-- **Easy integration** with front-end tools (like FlutterFlow)  
-- **Deploy anywhere**: Codespaces, Docker, or your favorite cloud
+- **LangChain** for RAG pipeline management
+- **FAISS** for efficient semantic search
+- **FastAPI** for modern, scalable APIs
+- **Hugging Face Inference API** for LLM integration
+- Designed for easy deployment and integration
 
-## 🚀 Getting Started
+---
 
-Clone the repo and install dependencies:
+## Getting Started
 
-git clone https://github.com/yourusername/langchain-rag-fastapi.git
+**Step 1:** Clone the repository and install dependencies
+
+```bash
+git clone https://github.com/yassinekoubaa/langchain-rag-fastapi.git
 cd langchain-rag-fastapi
 pip install -r requirements.txt
+```
 
-Start the API server
+**Step 2:** Create a `.env` file in the project root and add your Hugging Face API token:
 
+```
+HUGGINGFACEHUB_API_TOKEN=your_huggingface_token_here
+```
+
+> You can generate a token at [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+
+**Step 3:** Start the API server
+
+```bash
 uvicorn app.main:app --reload
+```
 
-## 🛠 Example Usage
+---
 
-Once the server’s running, you can ask questions using `curl`, Postman, or any HTTP client. Here’s a simple example with `curl`:
+## Example Usage
 
+Send a POST request to the `/ask` endpoint with your question:
+
+```bash
 curl -X POST "http://localhost:8000/ask" \
      -H "Content-Type: application/json" \
-     -d '{"question": "Your question here related to you docs?"}'
+     -d '{"prompt": "Your question here about your documents"}'
+```
 
-## 🤔 Why Did I Build This?
+---
 
-I’m fascinated by making AI actually useful in the real world—not just cool demos. RAG is a game-changer because it:
+## Why RAG?
 
-- Reduces hallucinations (AI making stuff up)
-- Grounds answers in your own data
-- Makes AI safer and more reliable for businesses
+- Reduces LLM hallucinations by grounding answers in your data
+- Enables accurate, context-aware responses for business and professional use
+- Scalable and adaptable for consulting, enterprise, and knowledge management
 
-These approaches are especially important for industries like consulting and professional services, where accuracy and trust matter.
+---
 
-## 📚 Resources
+## Resources
 
 - [LangChain Documentation](https://python.langchain.com/)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [FAISS](https://github.com/facebookresearch/faiss)
+- [Hugging Face Inference API](https://huggingface.co/docs/huggingface_hub/guides/inference)
 
-## 📄 License
+---
 
-MIT — feel free to use, share, and build on this!
+## License
 
-If you have questions, ideas, or just want to chat about GenAI, feel free to reach out. 
-Happy hacking! 🚀
+MIT — use, modify, and build upon this project
