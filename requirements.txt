@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+langchain
+langchain-community==0.0.36
+sentence-transformers==2.2.2
+faiss-cpu
+python-dotenv
+transformers==4.36.2
+accelerate==0.21.0
+huggingface_hub==0.20.3
+packaging<25,>=23.2
+langchain_huggingface

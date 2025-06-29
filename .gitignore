@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Environment variables
+.env
+
+# VS Code settings
+.vscode/
+
+# macOS files
+.DS_Store
+
+# Test and coverage outputs
+htmlcov/
+.tox/
+.nox/
+.coverage
+coverage.xml
+*.cover
+*.py,cover
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# FAISS index files (if you persist them)
+*.faiss
+# GitHub Copilot instructions
+.github/copilot-instructions.md
